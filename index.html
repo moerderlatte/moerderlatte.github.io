@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Push App</title>
+  <link rel="manifest" href="manifest.json" />
+</head>
+<body>
+  <h1>Push App</h1>
+  <div id="auth-section">
+    <input type="email" id="email" placeholder="E-Mail" />
+    <input type="password" id="password" placeholder="Passwort" />
+    <button id="login-btn">Login</button>
+  </div>
+  <div id="app-section" style="display:none;">
+    <p>Willkommen! <span id="user-email"></span></p>
+    <button id="send-btn">Push an anderen senden</button>
+  </div>
+
+  <!-- Firebase modular SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDocs, collection } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
+
+    const firebaseConfig = {
+    apiKey: "AIzaSyC0OsjwdsdNH8UPtBpIg7xpGZT7vg_b3g0",
+    authDomain: "butterfly-47deb.firebaseapp.com",
+    projectId: "butterfly-47deb",
+    storageBucket: "butterfly-47deb.firebasestorage.app",
+    messagingSenderId: "842658093482",
+    appId: "1:842658093482:web:5f7b550355e71d888df3d3",
+    measurementId: "G-92J51GEEYK"
+  };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const messaging = getMessaging(app);
+
+    // Service Worker registrieren
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js")
+        .then(() => console.log("Service Worker registriert"))
+        .catch(console.error);
+    }
+
+    const vapidKey = "DEIN_VAPID_KEY_HIER"; // Hier VAPID Key eintragen
+    const serverKey = "DEIN_SERVER_KEY_HIER"; // Für den Push-Request
+
+    const authSection = document.getElementById("auth-section");
+    const appSection = document.getElementById("app-section");
+    const userEmailSpan = document.getElementById("user-email");
+    const loginBtn = document.getElementById("login-btn");
+    const sendBtn = document.getElementById("send-btn");
+
+    loginBtn.addEventListener("click", async () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        await afterLogin(userCred.user);
+      } catch (err) {
+        alert("Fehler: " + err.message);
+      }
+    });
+
+    async function afterLogin(user) {
+      userEmailSpan.textContent = user.email;
+      authSection.style.display = "none";
+      appSection.style.display = "block";
+
+      try {
+        const token = await getToken(messaging, { vapidKey });
+        if (token) {
+          await setDoc(doc(db, "users", user.uid), { token, email: user.email });
+          console.log("Token gespeichert:", token);
+        } else {
+          console.log("Kein Token erhalten.");
+        }
+      } catch (err) {
+        console.error("Token holen Fehler:", err);
+      }
+    }
+
+    sendBtn.addEventListener("click", async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert("Nicht eingeloggt.");
+        return;
+      }
+
+      try {
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        const otherUserDoc = usersSnapshot.docs.find(doc => doc.id !== currentUser.uid);
+        if (!otherUserDoc) {
+          alert("Kein anderer Nutzer gefunden.");
+          return;
+        }
+        const otherToken = otherUserDoc.data().token;
+        if (!otherToken) {
+          alert("Anderer Nutzer hat kein Token.");
+          return;
+        }
+
+        // Push-Nachricht senden über FCM HTTP API
+        await fetch("https://fcm.googleapis.com/fcm/send", {
+          method: "POST",
+          headers: {
+            "Authorization": "key=" + serverKey,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            to: otherToken,
+            notification: {
+              title: "Ping!",
+              body: `${currentUser.email} hat gedrückt!`
+            }
+          })
+        });
+
+        alert("Push-Nachricht gesendet!");
+      } catch (err) {
+        console.error(err);
+        alert("Fehler beim Senden: " + err.message);
+      }
+    });
+
+    // Prüfen, ob Nutzer schon eingeloggt ist (Session)
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        afterLogin(user);
+      }
+    });
+
+    // Empfangene Nachrichten (optional)
+    onMessage(messaging, payload => {
+      console.log("Push erhalten:", payload);
+      alert(`Push erhalten: ${payload.notification.title} - ${payload.notification.body}`);
+    });
+  </script>
+</body>
+</html>
