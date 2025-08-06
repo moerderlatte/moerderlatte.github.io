@@ -1,0 +1,16 @@
+{
+  "name": "Butterfly",
+  "short_name": "Butterfly",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "no desc",
+  "icons": [
+    {
+      "src": "https://i.pinimg.com/236x/33/82/6c/33826c6c621399a85140f487200263e4.jpg",
+      "sizes": "236x236",
+      "type": "image/png"
+    },
+    
+  ]
+}
